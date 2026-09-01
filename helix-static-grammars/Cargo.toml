@@ -1,0 +1,24 @@
+[package]
+name = "helix-static-grammars"
+description = "Static tree-sitter grammar registry for Helix"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+static-grammars = []
+
+[dependencies]
+tree-sitter-language = "=0.1.5"
+
+[build-dependencies]
+cc = "1"
+
+[dev-dependencies]
+ropey.workspace = true
+tree-house.workspace = true
+tree-house-bindings = { version = "=0.2.4", default-features = false, features = ["tree-sitter-language"] }

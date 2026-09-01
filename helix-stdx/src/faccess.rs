@@ -431,36 +431,56 @@ mod imp {
     }
 }
 
-// Licensed under MIT from faccess except for `copy_metadata`
+#[cfg(any(not(any(unix, windows)), test))]
+fn portable_access(p: &Path, mode: AccessMode) -> io::Result<()> {
+    let metadata = std::fs::metadata(p)?;
+
+    if mode.contains(AccessMode::READ) {
+        std::fs::File::open(p)?;
+    }
+    if mode.contains(AccessMode::WRITE) && metadata.permissions().readonly() {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "Path is read only",
+        ));
+    }
+    if mode.contains(AccessMode::EXECUTE) {
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "Executable permission metadata is unavailable",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(any(not(any(unix, windows)), test))]
+fn portable_copy_metadata(from: &Path, to: &Path) -> io::Result<()> {
+    std::fs::set_permissions(to, std::fs::metadata(from)?.permissions())
+}
+
+#[cfg(any(not(any(unix, windows)), test))]
+fn portable_hardlink_count(_p: &Path) -> io::Result<u64> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "Hardlink counts are unavailable",
+    ))
+}
+
+// Licensed under MIT from faccess except for `copy_metadata`.
 #[cfg(not(any(unix, windows)))]
 mod imp {
     use super::*;
 
     pub fn access(p: &Path, mode: AccessMode) -> io::Result<()> {
-        if mode.contains(AccessMode::WRITE) {
-            if std::fs::metadata(p)?.permissions().readonly() {
-                return Err(io::Error::new(
-                    io::ErrorKind::PermissionDenied,
-                    "Path is read only",
-                ));
-            } else {
-                return Ok(());
-            }
-        }
-
-        if p.exists() {
-            Ok(())
-        } else {
-            Err(io::Error::new(io::ErrorKind::NotFound, "Path not found"))
-        }
+        portable_access(p, mode)
     }
 
-    pub fn copy_metadata(from: &path, to: &Path) -> io::Result<()> {
-        let meta = std::fs::metadata(from)?;
-        let perms = meta.permissions();
-        std::fs::set_permissions(to, perms)?;
+    pub fn copy_metadata(from: &Path, to: &Path) -> io::Result<()> {
+        portable_copy_metadata(from, to)
+    }
 
-        Ok(())
+    pub fn hardlink_count(p: &Path) -> io::Result<u64> {
+        portable_hardlink_count(p)
     }
 }
 
@@ -478,4 +498,53 @@ pub fn copy_metadata(from: &Path, to: &Path) -> io::Result<()> {
 
 pub fn hardlink_count(p: &Path) -> io::Result<u64> {
     imp::hardlink_count(p)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn portable_access_checks_all_requested_modes() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("file");
+        std::fs::write(&file, b"data").unwrap();
+
+        portable_access(
+            &file,
+            AccessMode::EXISTS | AccessMode::READ | AccessMode::WRITE,
+        )
+        .unwrap();
+        assert_eq!(
+            portable_access(&file, AccessMode::EXECUTE)
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::Unsupported
+        );
+        assert_eq!(
+            portable_access(&dir.path().join("missing"), AccessMode::EXISTS)
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::NotFound
+        );
+    }
+
+    #[test]
+    fn portable_metadata_and_hardlink_behavior_is_explicit() {
+        let dir = tempfile::tempdir().unwrap();
+        let from = dir.path().join("from");
+        let to = dir.path().join("to");
+        std::fs::write(&from, b"from").unwrap();
+        std::fs::write(&to, b"to").unwrap();
+        let mut permissions = std::fs::metadata(&from).unwrap().permissions();
+        permissions.set_readonly(true);
+        std::fs::set_permissions(&from, permissions).unwrap();
+
+        portable_copy_metadata(&from, &to).unwrap();
+        assert!(std::fs::metadata(&to).unwrap().permissions().readonly());
+        assert_eq!(
+            portable_hardlink_count(&to).unwrap_err().kind(),
+            io::ErrorKind::Unsupported
+        );
+    }
 }

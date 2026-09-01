@@ -1,5 +1,6 @@
 //! Functions for working with [Path].
 
+#[cfg(not(target_os = "motor"))]
 pub use etcetera::home_dir;
 use once_cell::sync::Lazy;
 use regex_cursor::{engines::meta::Regex, Input};
@@ -13,6 +14,22 @@ use std::{
 };
 
 use crate::env::current_working_dir;
+
+#[cfg(target_os = "motor")]
+pub fn home_dir() -> std::io::Result<PathBuf> {
+    let path = std::env::var_os("HOME")
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from)
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "HOME is not set"))?;
+    if path.is_absolute() {
+        Ok(path)
+    } else {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "HOME is not absolute",
+        ))
+    }
+}
 
 /// Replaces users home directory from `path` with tilde `~` if the directory
 /// is available, otherwise returns the path unchanged.

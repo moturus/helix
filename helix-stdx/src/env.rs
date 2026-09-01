@@ -54,10 +54,11 @@ pub fn env_var_is_set(env_var_name: &str) -> bool {
 
 /// Checks if a binary with the given name exists.
 pub fn binary_exists<T: AsRef<OsStr>>(binary_name: T) -> bool {
-    which::which(binary_name).is_ok()
+    which(binary_name).is_ok()
 }
 
 /// Attempts to find a binary of the given name. See [which](https://linux.die.net/man/1/which).
+#[cfg(not(target_os = "motor"))]
 pub fn which<T: AsRef<OsStr>>(
     binary_name: T,
 ) -> Result<std::path::PathBuf, ExecutableNotFoundError> {
@@ -66,6 +67,36 @@ pub fn which<T: AsRef<OsStr>>(
         command: binary_name.to_string_lossy().into_owned(),
         inner: err,
     })
+}
+
+#[cfg(target_os = "motor")]
+pub fn which<T: AsRef<OsStr>>(
+    binary_name: T,
+) -> Result<std::path::PathBuf, ExecutableNotFoundError> {
+    let binary_name = binary_name.as_ref();
+    find_executable(binary_name, std::env::var_os("PATH").as_deref()).ok_or_else(|| {
+        ExecutableNotFoundError {
+            command: binary_name.to_string_lossy().into_owned(),
+        }
+    })
+}
+
+#[cfg(any(target_os = "motor", test))]
+fn find_executable(binary_name: &OsStr, paths: Option<&OsStr>) -> Option<PathBuf> {
+    let is_file = |path: &Path| path.metadata().is_ok_and(|metadata| metadata.is_file());
+    if binary_name
+        .as_encoded_bytes()
+        .iter()
+        .any(|byte| std::path::is_separator(*byte as char))
+    {
+        let path = PathBuf::from(binary_name);
+        return is_file(&path).then_some(path);
+    }
+
+    let paths = paths.filter(|paths| !paths.is_empty())?;
+    std::env::split_paths(paths)
+        .map(|path| path.join(binary_name))
+        .find(|path| is_file(path))
 }
 
 fn find_brace_end(src: &[u8]) -> Option<usize> {
@@ -164,12 +195,20 @@ pub fn expand<S: AsRef<OsStr> + ?Sized>(src: &S) -> Cow<OsStr> {
 #[derive(Debug)]
 pub struct ExecutableNotFoundError {
     command: String,
+    #[cfg(not(target_os = "motor"))]
     inner: which::Error,
 }
 
 impl std::fmt::Display for ExecutableNotFoundError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "command '{}' not found: {}", self.command, self.inner)
+        #[cfg(not(target_os = "motor"))]
+        {
+            write!(f, "command '{}' not found: {}", self.command, self.inner)
+        }
+        #[cfg(target_os = "motor")]
+        {
+            write!(f, "command '{}' not found", self.command)
+        }
     }
 }
 
@@ -179,7 +218,7 @@ impl std::error::Error for ExecutableNotFoundError {}
 mod tests {
     use std::ffi::{OsStr, OsString};
 
-    use super::{current_working_dir, expand_impl, set_current_working_dir};
+    use super::{current_working_dir, expand_impl, find_executable, set_current_working_dir};
 
     #[test]
     fn current_dir_is_set() {
@@ -222,5 +261,36 @@ mod tests {
         assert_env_expand!(env, "baz/${EMPTY:=bar}/foo", "baz/bar/foo");
         assert_env_expand!(env, "baz/${EMPTY-bar}/foo", "baz//foo");
         assert_env_expand!(env, "baz/${EMPTY=bar}/foo", "baz//foo");
+    }
+
+    #[test]
+    fn executable_search_uses_direct_paths_and_path_order() {
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        std::fs::write(second.path().join("tool"), b"").unwrap();
+        let paths = std::env::join_paths([first.path(), second.path()]).unwrap();
+
+        assert_eq!(
+            find_executable(OsStr::new("tool"), Some(&paths)),
+            Some(second.path().join("tool"))
+        );
+        assert_eq!(
+            find_executable(second.path().join("tool").as_os_str(), None),
+            Some(second.path().join("tool"))
+        );
+    }
+
+    #[test]
+    fn executable_search_rejects_directories_and_missing_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = std::env::join_paths([dir.path()]).unwrap();
+
+        assert_eq!(find_executable(OsStr::new("missing"), Some(&paths)), None);
+        assert_eq!(find_executable(dir.path().as_os_str(), None), None);
+        assert_eq!(find_executable(OsStr::new("tool"), None), None);
+        assert_eq!(
+            find_executable(OsStr::new("tool"), Some(OsStr::new(""))),
+            None
+        );
     }
 }

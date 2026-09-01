@@ -3,6 +3,7 @@ pub mod grammar;
 
 use helix_stdx::{env::current_working_dir, path};
 
+#[cfg(not(target_os = "motor"))]
 use etcetera::base_strategy::{choose_base_strategy, BaseStrategy};
 use std::path::{Path, PathBuf};
 
@@ -116,6 +117,7 @@ pub fn runtime_file(rel_path: impl AsRef<Path>) -> PathBuf {
     })
 }
 
+#[cfg(not(target_os = "motor"))]
 pub fn config_dir() -> PathBuf {
     // TODO: allow env var override
     let strategy = choose_base_strategy().expect("Unable to find the config directory!");
@@ -124,12 +126,52 @@ pub fn config_dir() -> PathBuf {
     path
 }
 
+#[cfg(target_os = "motor")]
+pub fn config_dir() -> PathBuf {
+    motor_base_dir(
+        std::env::var_os("XDG_CONFIG_HOME").as_deref(),
+        std::env::var_os("HOME").as_deref(),
+        ".config",
+    )
+    .expect("XDG_CONFIG_HOME or an absolute HOME is required")
+    .join("helix")
+}
+
+#[cfg(not(target_os = "motor"))]
 pub fn cache_dir() -> PathBuf {
     // TODO: allow env var override
     let strategy = choose_base_strategy().expect("Unable to find the cache directory!");
     let mut path = strategy.cache_dir();
     path.push("helix");
     path
+}
+
+#[cfg(target_os = "motor")]
+pub fn cache_dir() -> PathBuf {
+    motor_base_dir(
+        std::env::var_os("XDG_CACHE_HOME").as_deref(),
+        std::env::var_os("HOME").as_deref(),
+        ".cache",
+    )
+    .expect("XDG_CACHE_HOME or an absolute HOME is required")
+    .join("helix")
+}
+
+#[cfg(any(target_os = "motor", test))]
+fn motor_base_dir(
+    xdg: Option<&std::ffi::OsStr>,
+    home: Option<&std::ffi::OsStr>,
+    fallback: &str,
+) -> Option<PathBuf> {
+    xdg.filter(|path| !path.is_empty())
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .or_else(|| {
+            home.filter(|path| !path.is_empty())
+                .map(PathBuf::from)
+                .filter(|path| path.is_absolute())
+                .map(|path| path.join(fallback))
+        })
 }
 
 pub fn config_file() -> PathBuf {
@@ -271,9 +313,9 @@ fn ensure_parent_dir(path: &Path) {
 
 #[cfg(test)]
 mod merge_toml_tests {
-    use std::str;
+    use std::{path::PathBuf, str};
 
-    use super::merge_toml_values;
+    use super::{merge_toml_values, motor_base_dir};
     use toml::Value;
 
     #[test]
@@ -339,5 +381,26 @@ mod merge_toml_tests {
                 .unwrap(),
             &vec![Value::String("lsp".into())]
         )
+    }
+
+    #[test]
+    fn motor_base_directory_prefers_absolute_xdg_then_home() {
+        let root = PathBuf::from(std::path::MAIN_SEPARATOR_STR);
+        let xdg = root.join("xdg");
+        let home = root.join("home");
+
+        assert_eq!(
+            motor_base_dir(Some(xdg.as_os_str()), Some(home.as_os_str()), ".config"),
+            Some(xdg)
+        );
+        assert_eq!(
+            motor_base_dir(
+                Some(std::ffi::OsStr::new("relative")),
+                Some(home.as_os_str()),
+                ".config"
+            ),
+            Some(home.join(".config"))
+        );
+        assert_eq!(motor_base_dir(None, None, ".config"), None);
     }
 }

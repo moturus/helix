@@ -253,7 +253,7 @@ pub struct Config {
     pub scrolloff: usize,
     /// Number of lines to scroll at once. Defaults to 3
     pub scroll_lines: isize,
-    /// Mouse support. Defaults to true.
+    /// Mouse support. Defaults to true, except on Motor OS.
     pub mouse: bool,
     /// Shell to use for shell commands. Defaults to ["cmd", "/C"] on Windows and ["sh", "-c"] otherwise.
     pub shell: Vec<String>,
@@ -974,12 +974,16 @@ pub enum PopupBorderConfig {
     Menu,
 }
 
+const fn default_mouse(target_is_motor: bool) -> bool {
+    !target_is_motor
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
             scrolloff: 5,
             scroll_lines: 3,
-            mouse: true,
+            mouse: default_mouse(cfg!(target_os = "motor")),
             shell: if cfg!(windows) {
                 vec!["cmd".to_owned(), "/C".to_owned()]
             } else {
@@ -1036,6 +1040,17 @@ impl Default for Config {
             clipboard_provider: ClipboardProvider::default(),
             editor_config: true,
         }
+    }
+}
+
+#[cfg(test)]
+mod motor_config_tests {
+    use super::default_mouse;
+
+    #[test]
+    fn mouse_defaults_off_only_for_motor() {
+        assert!(!default_mouse(true));
+        assert!(default_mouse(false));
     }
 }
 

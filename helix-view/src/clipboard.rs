@@ -96,7 +96,7 @@ mod external {
         #[cfg(windows)]
         Windows,
         Termux,
-        #[cfg(feature = "term")]
+        #[cfg(all(feature = "term", not(target_os = "motor")))]
         Termcode,
         Custom(CommandProvider),
         None,
@@ -130,7 +130,12 @@ mod external {
             }
         }
 
-        #[cfg(not(any(windows, target_os = "macos")))]
+        #[cfg(target_os = "motor")]
+        fn default() -> Self {
+            motor_default_provider()
+        }
+
+        #[cfg(not(any(windows, target_os = "macos", target_os = "motor")))]
         fn default() -> Self {
             use helix_stdx::env::{binary_exists, env_var_is_set};
 
@@ -198,7 +203,7 @@ mod external {
                 Self::Termux => builtin_name("termux", &TERMUX),
                 #[cfg(windows)]
                 Self::Windows => "windows".into(),
-                #[cfg(feature = "term")]
+                #[cfg(all(feature = "term", not(target_os = "motor")))]
                 Self::Termcode => "termcode".into(),
                 Self::Custom(command_provider) => Cow::Owned(format!(
                     "custom ({}+{})",
@@ -244,7 +249,7 @@ mod external {
                     }
                     ClipboardType::Selection => Ok(String::new()),
                 },
-                #[cfg(feature = "term")]
+                #[cfg(all(feature = "term", not(target_os = "motor")))]
                 Self::Termcode => Err(ClipboardError::ReadingNotSupported),
                 Self::Custom(command_provider) => {
                     execute_command(&command_provider.yank, None, true)?
@@ -290,7 +295,7 @@ mod external {
                     }
                     ClipboardType::Selection => Ok(()),
                 },
-                #[cfg(feature = "term")]
+                #[cfg(all(feature = "term", not(target_os = "motor")))]
                 Self::Termcode => {
                     crossterm::queue!(
                         std::io::stdout(),
@@ -400,7 +405,7 @@ mod external {
         paste => "termux-clipboard-set";
     }
 
-    #[cfg(feature = "term")]
+    #[cfg(all(feature = "term", not(target_os = "motor")))]
     mod osc52 {
         use {super::ClipboardType, crate::base64};
 
@@ -495,6 +500,23 @@ mod external {
             Ok(Some(String::from_utf8(output.stdout)?))
         } else {
             Ok(None)
+        }
+    }
+
+    #[cfg(any(target_os = "motor", test))]
+    fn motor_default_provider() -> ClipboardProvider {
+        ClipboardProvider::None
+    }
+
+    #[cfg(test)]
+    mod motor_tests {
+        use super::{motor_default_provider, ClipboardProvider};
+
+        #[test]
+        fn motor_selects_no_system_or_terminal_clipboard() {
+            let provider = motor_default_provider();
+            assert_eq!(provider, ClipboardProvider::None);
+            assert_eq!(provider.name(), "none");
         }
     }
 }

@@ -1879,17 +1879,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f4c7245a08504955605670dbf141fceab975f15ca21570696aebe9d2e71576bd"
 
 [[package]]
-name = "io-uring"
-version = "0.7.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b86e202f00093dcba4275d4636b93ef9dd75d025ae560d2521b45ea28ab49013"
-dependencies = [
- "bitflags",
- "cfg-if",
- "libc",
-]
-
-[[package]]
 name = "is-docker"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1986,7 +1975,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a793df0d7afeac54f95b471d3af7f0d4fb975699f972341a4b76988d49cdf0c"
 dependencies = [
  "cfg-if",
- "windows-targets 0.52.6",
+ "windows-targets 0.53.2",
 ]
 
 [[package]]
@@ -2089,16 +2078,21 @@ dependencies = [
 
 [[package]]
 name = "mio"
-version = "1.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80e04d1dcff3aae0704555fe5fee3bcfaf3d1fdf8a7e521d5b9d2b42acb52cec"
+version = "1.0.4"
+source = "git+https://github.com/moturus/mio.git?rev=907466acd6bd9fcccfb4f9c097dcda60c55157c4#907466acd6bd9fcccfb4f9c097dcda60c55157c4"
 dependencies = [
- "hermit-abi",
  "libc",
  "log",
+ "moto-rt",
  "wasi 0.11.0+wasi-snapshot-preview1",
- "windows-sys 0.52.0",
+ "windows-sys 0.60.2",
 ]
+
+[[package]]
+name = "moto-rt"
+version = "0.17.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8e7200c0150f580541a80917e0ade7f91c0e76d2d9f81e3735ebdb7a3862bef"
 
 [[package]]
 name = "nucleo"
@@ -2587,12 +2581,12 @@ checksum = "b7c388c1b5e93756d0c740965c41e8822f866621d41acbdf6336a6a168f8840c"
 
 [[package]]
 name = "socket2"
-version = "0.5.7"
+version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce305eb0b4296696835b71df73eb912e0f1ffd2556a501fcede6e0c50349191c"
+checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -2744,29 +2738,26 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.46.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0cc3a2344dafbe23a245241fe8b09735b521110d30fcefbbd5feb1797ca35d17"
+version = "1.47.1"
+source = "git+https://github.com/moturus/tokio.git?rev=f9d26ea874753c0b5126401e77daee9e6222c359#f9d26ea874753c0b5126401e77daee9e6222c359"
 dependencies = [
  "backtrace",
  "bytes",
- "io-uring",
  "libc",
  "mio",
+ "moto-rt",
  "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
- "slab",
  "socket2",
  "tokio-macros",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
 name = "tokio-macros"
 version = "2.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e06d43f1345a3bcd39f6a56dbb7dcab2ba47e68e8ac134855e7e2bdbaf8cab8"
+source = "git+https://github.com/moturus/tokio.git?rev=f9d26ea874753c0b5126401e77daee9e6222c359#f9d26ea874753c0b5126401e77daee9e6222c359"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2844,9 +2835,7 @@ dependencies = [
 
 [[package]]
 name = "tree-house-bindings"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f1646788fe0afdbf8e191b5d0f558df7333d8857665a67053c532ec811e6086"
+version = "0.2.4"
 dependencies = [
  "cc",
  "libloading",

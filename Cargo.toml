@@ -37,7 +37,7 @@ package.helix-tui.opt-level = 2
 package.helix-term.opt-level = 2
 
 [workspace.dependencies]
-tree-house = { version = "0.3.0", default-features = false }
+tree-house = { version = "=0.3.0", default-features = false }
 nucleo = "0.5.0"
 slotmap = "1.0.7"
 thiserror = "2.0"
@@ -60,3 +60,10 @@ repository = "https://github.com/helix-editor/helix"
 homepage = "https://helix-editor.com"
 license = "MPL-2.0"
 rust-version = "1.82"
+
+[patch.crates-io]
+mio = { git = "https://github.com/moturus/mio.git", rev = "907466acd6bd9fcccfb4f9c097dcda60c55157c4" }
+tokio = { git = "https://github.com/moturus/tokio.git", rev = "f9d26ea874753c0b5126401e77daee9e6222c359" }
+# Temporary during local implementation. Replace with an exact GitHub revision
+# before publishing this branch.
+tree-house-bindings = { path = "../tree-house/bindings" }

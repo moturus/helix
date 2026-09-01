@@ -39,6 +39,7 @@ regex = "1"
 bitflags.workspace = true
 foldhash.workspace = true
 url = "2.5.4"
+percent-encoding = "2.3"
 
 log = "0.4"
 anyhow = "1.0"

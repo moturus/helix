@@ -1415,6 +1415,7 @@ dependencies = [
  "nucleo",
  "once_cell",
  "parking_lot",
+ "percent-encoding",
  "quickcheck",
  "regex",
  "regex-cursor",

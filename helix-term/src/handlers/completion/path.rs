@@ -36,7 +36,7 @@ pub(crate) fn path_completion(
             let path: Cow<_> = if matched_path.starts_with("file://") {
                 Url::from_str(&matched_path)
                     .ok()
-                    .and_then(|url| url.to_file_path().ok())?
+                    .and_then(|url| helix_core::uri::file_url::to_file_path(&url).ok())?
                     .into()
             } else {
                 Path::new(&*matched_path).into()

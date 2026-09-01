@@ -7,8 +7,8 @@ use crate::{
 
 use crate::lsp::{
     self, notification::DidChangeWorkspaceFolders, CodeActionCapabilityResolveSupport,
-    DidChangeWorkspaceFoldersParams, OneOf, PositionEncodingKind, SignatureHelp, Url,
-    WorkspaceFolder, WorkspaceFoldersChangeEvent,
+    DidChangeWorkspaceFoldersParams, OneOf, PositionEncodingKind, SignatureHelp, WorkspaceFolder,
+    WorkspaceFoldersChangeEvent,
 };
 use helix_core::{find_workspace, syntax::config::LanguageServerFeature, ChangeSet, Rope};
 use helix_loader::VERSION_AND_GIT_HASH;
@@ -85,7 +85,7 @@ impl Client {
         );
         let root_uri = root
             .as_ref()
-            .and_then(|root| lsp::Url::from_file_path(root).ok());
+            .and_then(|root| helix_core::uri::file_url::from_file_path(root).ok());
 
         if self.root_path == root.unwrap_or(workspace)
             || root_uri.as_ref().is_some_and(|root_uri| {
@@ -774,9 +774,9 @@ impl Client {
         }
         let url_from_path = |path| {
             let url = if is_dir {
-                Url::from_directory_path(path)
+                helix_core::uri::file_url::from_directory_path(path)
             } else {
-                Url::from_file_path(path)
+                helix_core::uri::file_url::from_file_path(path)
             };
             Some(url.ok()?.to_string())
         };
@@ -797,9 +797,9 @@ impl Client {
         }
         let url_from_path = |path| {
             let url = if is_dir {
-                Url::from_directory_path(path)
+                helix_core::uri::file_url::from_directory_path(path)
             } else {
-                Url::from_file_path(path)
+                helix_core::uri::file_url::from_file_path(path)
             };
             Some(url.ok()?.to_string())
         };

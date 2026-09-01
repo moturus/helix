@@ -1934,7 +1934,7 @@ impl Document {
 
     /// File path as a URL.
     pub fn url(&self) -> Option<Url> {
-        Url::from_file_path(self.path()?).ok()
+        helix_core::uri::file_url::from_file_path(self.path()?).ok()
     }
 
     pub fn uri(&self) -> Option<helix_core::Uri> {

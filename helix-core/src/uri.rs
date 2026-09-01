@@ -4,6 +4,8 @@ use std::{
     sync::Arc,
 };
 
+pub mod file_url;
+
 /// A generic pointer to a file location.
 ///
 /// Currently this type only supports paths to local files.
@@ -20,7 +22,7 @@ impl Uri {
     #[allow(clippy::result_unit_err)]
     pub fn to_url(&self) -> Result<url::Url, ()> {
         match self {
-            Uri::File(path) => url::Url::from_file_path(path),
+            Uri::File(path) => file_url::from_file_path(path),
         }
     }
 
@@ -79,7 +81,7 @@ impl std::error::Error for UrlConversionError {}
 
 fn convert_url_to_uri(url: &url::Url) -> Result<Uri, UrlConversionErrorKind> {
     if url.scheme() == "file" {
-        url.to_file_path()
+        file_url::to_file_path(url)
             .map(|path| Uri::File(helix_stdx::path::normalize(path).into()))
             .map_err(|_| UrlConversionErrorKind::UnableToConvert)
     } else {

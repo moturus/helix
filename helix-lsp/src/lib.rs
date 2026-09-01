@@ -886,7 +886,7 @@ fn start_client(
     // `root_uri` and `workspace_folder` can be empty in case there is no workspace
     // `root_url` can not, use `workspace` as a fallback
     let root_path = root.clone().unwrap_or_else(|| workspace.clone());
-    let root_uri = root.and_then(|root| lsp::Url::from_file_path(root).ok());
+    let root_uri = root.and_then(|root| helix_core::uri::file_url::from_file_path(root).ok());
 
     if let Some(globset) = &ls_config.required_root_patterns {
         if !root_path

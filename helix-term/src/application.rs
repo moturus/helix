@@ -38,15 +38,30 @@ use std::{
     sync::Arc,
 };
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "motor")))]
 use anyhow::Context;
 use anyhow::Error;
 
 use crossterm::event::Event as CrosstermEvent;
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "motor")))]
 use {signal_hook::consts::signal, signal_hook_tokio::Signals};
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "motor"))]
 type Signals = futures_util::stream::Empty<()>;
+
+#[cfg(any(windows, target_os = "motor", test))]
+fn empty_signals() -> futures_util::stream::Empty<()> {
+    futures_util::stream::empty()
+}
+
+fn is_key_release(event: &CrosstermEvent) -> bool {
+    matches!(
+        event,
+        CrosstermEvent::Key(crossterm::event::KeyEvent {
+            kind: crossterm::event::KeyEventKind::Release,
+            ..
+        })
+    )
+}
 
 #[cfg(not(feature = "integration"))]
 use tui::backend::CrosstermBackend;
@@ -226,9 +241,9 @@ impl Application {
                 .unwrap_or_else(|_| editor.new_file(Action::VerticalSplit));
         }
 
-        #[cfg(windows)]
-        let signals = futures_util::stream::empty();
-        #[cfg(not(windows))]
+        #[cfg(any(windows, target_os = "motor"))]
+        let signals = empty_signals();
+        #[cfg(not(any(windows, target_os = "motor")))]
         let signals = Signals::new([
             signal::SIGTSTP,
             signal::SIGCONT,
@@ -464,13 +479,13 @@ impl Application {
         editor.set_theme(theme);
     }
 
-    #[cfg(windows)]
-    // no signal handling available on windows
+    #[cfg(any(windows, target_os = "motor"))]
+    // No process-signal handling is available on these targets.
     pub async fn handle_signals(&mut self, _signal: ()) -> bool {
         true
     }
 
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "motor")))]
     pub async fn handle_signals(&mut self, signal: i32) -> bool {
         match signal {
             signal::SIGTSTP => {
@@ -659,11 +674,7 @@ impl Application {
                 self.compositor
                     .handle_event(&Event::Resize(width, height), &mut cx)
             }
-            // Ignore keyboard release events.
-            CrosstermEvent::Key(crossterm::event::KeyEvent {
-                kind: crossterm::event::KeyEventKind::Release,
-                ..
-            }) => false,
+            event if is_key_release(&event) => false,
             event => self.compositor.handle_event(&event.into(), &mut cx),
         };
 
@@ -1176,5 +1187,31 @@ impl Application {
         }
 
         errs
+    }
+}
+
+#[cfg(test)]
+mod motor_tests {
+    use super::{empty_signals, is_key_release};
+    use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+    use futures_util::StreamExt;
+
+    #[tokio::test]
+    async fn empty_signal_stream_never_produces_an_event() {
+        assert!(empty_signals().next().await.is_none());
+    }
+
+    #[test]
+    fn only_key_release_events_are_ignored() {
+        let event = |kind| {
+            Event::Key(KeyEvent::new_with_kind(
+                KeyCode::Char('c'),
+                KeyModifiers::CONTROL,
+                kind,
+            ))
+        };
+        assert!(!is_key_release(&event(KeyEventKind::Press)));
+        assert!(is_key_release(&event(KeyEventKind::Release)));
+        assert!(!is_key_release(&Event::Resize(80, 24)));
     }
 }

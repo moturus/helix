@@ -5,6 +5,11 @@ use helix_term::application::Application;
 use helix_term::args::Args;
 use helix_term::config::{Config, ConfigLoadError};
 
+#[cfg(any(target_os = "motor", test))]
+fn before_application_new(setup: impl FnOnce() -> std::io::Result<()>) -> Result<()> {
+    setup().context("failed to enable Ctrl+C terminal events")
+}
+
 fn setup_logging(verbosity: u64) -> Result<()> {
     let mut base_config = fern::Dispatch::new();
 
@@ -148,9 +153,32 @@ FLAGS:
     });
 
     // TODO: use the thread local executor to spawn the application task separately from the work pool
+    #[cfg(target_os = "motor")]
+    before_application_new(crossterm::event::enable_ctrl_c_events)?;
     let mut app = Application::new(args, config, lang_loader).context("unable to start Helix")?;
 
     let exit_code = app.run(&mut EventStream::new()).await?;
 
     Ok(exit_code)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::before_application_new;
+
+    #[test]
+    fn input_setup_runs_and_propagates_errors_before_application_creation() {
+        let mut called = false;
+        before_application_new(|| {
+            called = true;
+            Ok(())
+        })
+        .unwrap();
+        assert!(called);
+
+        let error = before_application_new(|| Err(std::io::Error::other("setup failed")))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("failed to enable Ctrl+C terminal events"));
+    }
 }

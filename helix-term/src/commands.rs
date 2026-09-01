@@ -6402,10 +6402,25 @@ fn shell_prompt(cx: &mut Context, prompt: Cow<'static, str>, behavior: ShellBeha
 }
 
 fn suspend(_cx: &mut Context) {
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "motor")))]
     {
         _cx.block_try_flush_writes().ok();
         signal_hook::low_level::raise(signal_hook::consts::signal::SIGTSTP).unwrap();
+    }
+    #[cfg(target_os = "motor")]
+    _cx.editor.set_error(MOTOR_SUSPEND_ERROR);
+}
+
+#[cfg(any(target_os = "motor", test))]
+const MOTOR_SUSPEND_ERROR: &str = "Suspend is unsupported on Motor OS";
+
+#[cfg(test)]
+mod motor_suspend_tests {
+    use super::MOTOR_SUSPEND_ERROR;
+
+    #[test]
+    fn suspend_reports_the_unsupported_operation() {
+        assert_eq!(MOTOR_SUSPEND_ERROR, "Suspend is unsupported on Motor OS");
     }
 }
 

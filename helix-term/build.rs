@@ -3,7 +3,8 @@ use helix_loader::grammar::{build_grammars, fetch_grammars};
 fn main() {
     println!("cargo:rustc-check-cfg=cfg(target_os, values(\"motor\"))");
 
-    if std::env::var("HELIX_DISABLE_AUTO_GRAMMAR_BUILD").is_err() {
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
+    if target_os != "motor" && std::env::var("HELIX_DISABLE_AUTO_GRAMMAR_BUILD").is_err() {
         fetch_grammars().expect("Failed to fetch tree-sitter grammars");
         build_grammars(Some(std::env::var("TARGET").unwrap()))
             .expect("Failed to compile tree-sitter grammars");

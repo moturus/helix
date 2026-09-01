@@ -1473,6 +1473,7 @@ dependencies = [
  "anyhow",
  "cc",
  "etcetera",
+ "helix-static-grammars",
  "helix-stdx",
  "log",
  "once_cell",
@@ -1481,6 +1482,7 @@ dependencies = [
  "threadpool",
  "toml",
  "tree-house",
+ "tree-house-bindings",
 ]
 
 [[package]]

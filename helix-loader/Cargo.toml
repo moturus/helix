@@ -25,9 +25,16 @@ log = "0.4"
 
 tree-house.workspace = true
 
+[target.'cfg(target_os = "motor")'.dependencies]
+helix-static-grammars = { path = "../helix-static-grammars", features = ["static-grammars"] }
+tree-house-bindings = { version = "=0.2.4", default-features = false, features = ["tree-sitter-language"] }
+
 [target.'cfg(not(target_os = "motor"))'.dependencies]
 # Cloning and compiling shared tree-sitter grammars.
 cc = { version = "1" }
 etcetera = "0.10"
 tempfile.workspace = true
 threadpool = { version = "1.0" }
+
+[dev-dependencies]
+helix-static-grammars = { path = "../helix-static-grammars" }

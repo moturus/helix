@@ -89,8 +89,19 @@ pub fn get_language(name: &str) -> Result<Option<Grammar>> {
 }
 
 #[cfg(target_os = "motor")]
-pub fn get_language(_name: &str) -> Result<Option<Grammar>> {
-    Ok(None)
+pub fn get_language(name: &str) -> Result<Option<Grammar>> {
+    if !is_static_grammar(name) {
+        return Ok(None);
+    }
+    let Some(language) = helix_static_grammars::get(name) else {
+        bail!("curated static grammar {name} is unavailable");
+    };
+    Ok(Some(Grammar::try_from(language)?))
+}
+
+#[cfg(any(target_os = "motor", test))]
+fn is_static_grammar(name: &str) -> bool {
+    helix_static_grammars::NAMES.contains(&name)
 }
 
 #[cfg(not(target_os = "motor"))]
@@ -716,5 +727,13 @@ mod tests {
         assert!(error
             .to_string()
             .contains("Invalid vendored grammar directory name"));
+    }
+
+    #[test]
+    fn static_resolver_recognizes_only_curated_names() {
+        for name in helix_static_grammars::NAMES {
+            assert!(is_static_grammar(name), "missing static grammar {name}");
+        }
+        assert!(!is_static_grammar("not-curated"));
     }
 }

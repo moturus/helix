@@ -106,10 +106,8 @@ fn open_external_url_callback(
 }
 
 #[cfg(any(target_os = "motor", test))]
-fn unsupported_external_url_callback(
-    _url: Url,
-) -> impl Future<Output = Result<job::Callback, anyhow::Error>> + Send + 'static {
-    async { Err(anyhow::anyhow!(MOTOR_EXTERNAL_URL_ERROR)) }
+async fn unsupported_external_url_callback(_url: Url) -> Result<job::Callback, anyhow::Error> {
+    Err(anyhow::anyhow!(MOTOR_EXTERNAL_URL_ERROR))
 }
 
 #[cfg(any(target_os = "motor", test))]

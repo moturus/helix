@@ -6414,16 +6414,6 @@ fn suspend(_cx: &mut Context) {
 #[cfg(any(target_os = "motor", test))]
 const MOTOR_SUSPEND_ERROR: &str = "Suspend is unsupported on Motor OS";
 
-#[cfg(test)]
-mod motor_suspend_tests {
-    use super::MOTOR_SUSPEND_ERROR;
-
-    #[test]
-    fn suspend_reports_the_unsupported_operation() {
-        assert_eq!(MOTOR_SUSPEND_ERROR, "Suspend is unsupported on Motor OS");
-    }
-}
-
 fn add_newline_above(cx: &mut Context) {
     add_newline_impl(cx, Open::Above);
 }
@@ -6837,4 +6827,14 @@ fn jump_to_word(cx: &mut Context, behaviour: Movement) {
         }
     }
     jump_to_label(cx, words, behaviour)
+}
+
+#[cfg(test)]
+mod motor_suspend_tests {
+    use super::MOTOR_SUSPEND_ERROR;
+
+    #[test]
+    fn suspend_reports_the_unsupported_operation() {
+        assert_eq!(MOTOR_SUSPEND_ERROR, "Suspend is unsupported on Motor OS");
+    }
 }

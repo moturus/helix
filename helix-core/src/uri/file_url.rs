@@ -1,3 +1,6 @@
+// Keep the compatibility layer interchangeable with url's file-path API.
+#![allow(clippy::result_unit_err)]
+
 use std::path::{Path, PathBuf};
 
 use url::Url;

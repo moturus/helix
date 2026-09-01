@@ -14,7 +14,9 @@ use helix_core::syntax::config::LanguageServerFeature;
 use helix_core::text_annotations::{InlineAnnotation, Overlay};
 use helix_event::TaskController;
 use helix_lsp::util::lsp_pos_to_pos;
-use helix_stdx::faccess::{copy_metadata, readonly};
+#[cfg(not(target_os = "motor"))]
+use helix_stdx::faccess::copy_metadata;
+use helix_stdx::faccess::readonly;
 use helix_vcs::{DiffHandle, DiffProviderRegistry};
 use once_cell::sync::OnceCell;
 use thiserror;
@@ -30,6 +32,8 @@ use std::future::Future;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+#[cfg(any(target_os = "motor", test))]
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 use std::time::SystemTime;
 
@@ -668,6 +672,155 @@ pub async fn to_writer<'a, W: tokio::io::AsyncWriteExt + Unpin + ?Sized>(
     Ok(())
 }
 
+#[cfg(any(target_os = "motor", test))]
+static MOTOR_BACKUP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+#[cfg(any(target_os = "motor", test))]
+fn motor_backup_path(path: &Path) -> anyhow::Result<PathBuf> {
+    let mut sequence = MOTOR_BACKUP_SEQUENCE.load(Ordering::Relaxed);
+    loop {
+        let next = sequence
+            .checked_add(1)
+            .ok_or_else(|| anyhow!("Motor save backup sequence exhausted"))?;
+        match MOTOR_BACKUP_SEQUENCE.compare_exchange_weak(
+            sequence,
+            next,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => break,
+            Err(current) => sequence = current,
+        }
+    }
+    let mut name = path
+        .file_name()
+        .ok_or_else(|| anyhow!("save target has no filename: {path:?}"))?
+        .to_os_string();
+    name.push(format!(
+        ".helix-save-{}-{sequence}.backup",
+        std::process::id()
+    ));
+    Ok(path.with_file_name(name))
+}
+
+#[cfg(any(target_os = "motor", test))]
+fn motor_create_backup(path: &Path, backup_path: &Path) -> io::Result<()> {
+    let mut source = std::fs::File::open(path)?;
+    let mut backup = std::fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(backup_path)?;
+    io::copy(&mut source, &mut backup)?;
+    backup.sync_all()
+}
+
+#[cfg(any(target_os = "motor", test))]
+fn motor_restore_backup(backup_path: &Path, path: &Path) -> io::Result<()> {
+    let mut backup = std::fs::File::open(backup_path)?;
+    let mut target = std::fs::OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .open(path)?;
+    io::copy(&mut backup, &mut target)?;
+    target.sync_all()
+}
+
+#[cfg(any(target_os = "motor", test))]
+async fn motor_protected_write<W, WFut, R>(
+    path: PathBuf,
+    backup_path: PathBuf,
+    write: W,
+    restore: R,
+) -> anyhow::Result<()>
+where
+    W: FnOnce(PathBuf) -> WFut,
+    WFut: Future<Output = anyhow::Result<()>>,
+    R: FnOnce(&Path, &Path) -> io::Result<()> + Send + 'static,
+{
+    let create_path = path.clone();
+    let create_backup_path = backup_path.clone();
+    tokio::task::spawn_blocking(move || motor_create_backup(&create_path, &create_backup_path))
+        .await??;
+
+    let write_result = write(path.clone()).await;
+    if write_result.is_ok() {
+        tokio::task::spawn_blocking(move || std::fs::remove_file(backup_path)).await??;
+        return Ok(());
+    }
+
+    let write_error = write_result.unwrap_err();
+    let restore_path = path.clone();
+    let restore_backup_path = backup_path.clone();
+    let restore_result =
+        tokio::task::spawn_blocking(move || restore(&restore_backup_path, &restore_path))
+            .await
+            .map_err(anyhow::Error::from)
+            .and_then(|result| result.map_err(anyhow::Error::from));
+
+    if let Err(restore_error) = restore_result {
+        bail!(
+            "save failed: {write_error}; restoration also failed: {restore_error}; backup retained at {backup_path:?}"
+        );
+    }
+
+    let cleanup_backup_path = backup_path.clone();
+    if let Err(cleanup_error) =
+        tokio::task::spawn_blocking(move || std::fs::remove_file(&cleanup_backup_path)).await?
+    {
+        bail!(
+            "save failed: {write_error}; file was restored but backup cleanup failed at {backup_path:?}: {cleanup_error}"
+        );
+    }
+    Err(write_error)
+}
+
+#[cfg(target_os = "motor")]
+async fn motor_write_document(
+    path: &Path,
+    encoding_with_bom_info: (&'static Encoding, bool),
+    text: &Rope,
+) -> anyhow::Result<()> {
+    let mut dst = tokio::fs::OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .open(path)
+        .await?;
+    to_writer(&mut dst, encoding_with_bom_info, text).await?;
+    dst.sync_all().await?;
+    Ok(())
+}
+
+#[cfg(target_os = "motor")]
+async fn motor_save(
+    path: PathBuf,
+    atomic_save: bool,
+    encoding_with_bom_info: (&'static Encoding, bool),
+    text: &Rope,
+) -> anyhow::Result<()> {
+    if !atomic_save {
+        return motor_write_document(&path, encoding_with_bom_info, text).await;
+    }
+    match tokio::fs::metadata(&path).await {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            let mut dst = tokio::fs::File::create(&path).await?;
+            to_writer(&mut dst, encoding_with_bom_info, text).await?;
+            dst.sync_all().await?;
+            return Ok(());
+        }
+        Err(error) => return Err(error.into()),
+        Ok(_) => {}
+    }
+
+    let backup_path = motor_backup_path(&path)?;
+    motor_protected_write(
+        path,
+        backup_path,
+        |path| async move { motor_write_document(&path, encoding_with_bom_info, text).await },
+        motor_restore_backup,
+    )
+    .await
+}
+
 fn take_with<T, F>(mut_ref: &mut T, f: F)
 where
     T: Default,
@@ -1028,8 +1181,10 @@ impl Document {
                 ));
             }
 
+            #[cfg(not(target_os = "motor"))]
             // Assume it is a hardlink to prevent data loss if the metadata cant be read (e.g. on certain Windows configurations)
             let is_hardlink = helix_stdx::faccess::hardlink_count(&write_path).unwrap_or(2) > 1;
+            #[cfg(not(target_os = "motor"))]
             let backup = if path.exists() && atomic_save {
                 let path_ = write_path.clone();
                 // hacks: we use tempfile to handle the complex task of creating
@@ -1062,6 +1217,7 @@ impl Document {
                 None
             };
 
+            #[cfg(not(target_os = "motor"))]
             let write_result: anyhow::Result<_> = async {
                 let mut dst = tokio::fs::File::create(&write_path).await?;
                 to_writer(&mut dst, encoding_with_bom_info, &text).await?;
@@ -1069,12 +1225,21 @@ impl Document {
                 Ok(())
             }
             .await;
+            #[cfg(target_os = "motor")]
+            let write_result = motor_save(
+                write_path.clone(),
+                atomic_save,
+                encoding_with_bom_info,
+                &text,
+            )
+            .await;
 
             let save_time = match fs::metadata(&write_path).await {
                 Ok(metadata) => metadata.modified().map_or(SystemTime::now(), |mtime| mtime),
                 Err(_) => SystemTime::now(),
             };
 
+            #[cfg(not(target_os = "motor"))]
             if let Some(backup) = backup {
                 if is_hardlink {
                     let mut delete = true;
@@ -2321,6 +2486,134 @@ mod test {
     use arc_swap::ArcSwap;
 
     use super::*;
+
+    fn backup_path(path: &Path) -> PathBuf {
+        path.with_file_name("explicit-test-backup")
+    }
+
+    async fn replace(path: PathBuf, contents: &'static [u8]) -> anyhow::Result<()> {
+        let mut file = tokio::fs::OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(path)
+            .await?;
+        use tokio::io::AsyncWriteExt;
+        file.write_all(contents).await?;
+        file.sync_all().await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn motor_protected_save_replaces_in_place_and_cleans_up() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("document");
+        let alias = dir.path().join("alias");
+        std::fs::write(&path, b"old contents").unwrap();
+        std::fs::hard_link(&path, &alias).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).unwrap();
+        }
+        let backup = motor_backup_path(&path).unwrap();
+
+        motor_protected_write(
+            path.clone(),
+            backup.clone(),
+            |path| replace(path, b"new contents"),
+            motor_restore_backup,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(std::fs::read(&path).unwrap(), b"new contents");
+        assert_eq!(std::fs::read(&alias).unwrap(), b"new contents");
+        assert!(!backup.exists());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::{MetadataExt, PermissionsExt};
+            assert_eq!(
+                std::fs::metadata(&path).unwrap().ino(),
+                std::fs::metadata(&alias).unwrap().ino()
+            );
+            assert_eq!(
+                std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                0o640
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn motor_protected_save_aborts_on_backup_collision() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("document");
+        let backup = backup_path(&path);
+        std::fs::write(&path, b"original").unwrap();
+        std::fs::write(&backup, b"do not clobber").unwrap();
+
+        let error = motor_protected_write(
+            path.clone(),
+            backup.clone(),
+            |_| async { panic!("write must not run after a backup collision") },
+            motor_restore_backup,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(error.to_string().contains("exists"));
+        assert_eq!(std::fs::read(&path).unwrap(), b"original");
+        assert_eq!(std::fs::read(&backup).unwrap(), b"do not clobber");
+    }
+
+    #[tokio::test]
+    async fn motor_protected_save_restores_after_partial_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("document");
+        let backup = backup_path(&path);
+        std::fs::write(&path, b"original contents").unwrap();
+
+        let error = motor_protected_write(
+            path.clone(),
+            backup.clone(),
+            |path| async move {
+                replace(path, b"partial").await?;
+                bail!("injected write failure")
+            },
+            motor_restore_backup,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(error.to_string().contains("injected write failure"));
+        assert_eq!(std::fs::read(&path).unwrap(), b"original contents");
+        assert!(!backup.exists());
+    }
+
+    #[tokio::test]
+    async fn motor_protected_save_retains_backup_when_restore_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("document");
+        let backup = backup_path(&path);
+        std::fs::write(&path, b"original contents").unwrap();
+
+        let error = motor_protected_write(
+            path.clone(),
+            backup.clone(),
+            |path| async move {
+                replace(path, b"partial").await?;
+                bail!("injected write failure")
+            },
+            |_, _| Err(io::Error::other("injected restore failure")),
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+
+        assert!(error.contains("injected write failure"));
+        assert!(error.contains("injected restore failure"));
+        assert!(error.contains(backup.to_str().unwrap()));
+        assert_eq!(std::fs::read(&backup).unwrap(), b"original contents");
+    }
 
     #[test]
     fn changeset_to_changes_ignore_line_endings() {

@@ -54,6 +54,7 @@ pub enum GrammarSource {
         #[serde(rename = "rev")]
         revision: String,
         subpath: Option<String>,
+        vendor: Option<String>,
     },
 }
 
@@ -84,8 +85,6 @@ fn ensure_git_is_available() -> Result<()> {
 }
 
 pub fn fetch_grammars() -> Result<()> {
-    ensure_git_is_available()?;
-
     // We do not need to fetch local grammars.
     let mut grammars = get_grammar_configs()?;
     grammars.retain(|grammar| !matches!(grammar.source, GrammarSource::Local { .. }));
@@ -96,12 +95,14 @@ pub fn fetch_grammars() -> Result<()> {
     let mut errors = Vec::new();
     let mut git_updated = Vec::new();
     let mut git_up_to_date = 0;
+    let mut vendored = 0;
     let mut non_git = Vec::new();
 
     for (grammar_id, res) in results {
         match res {
             Ok(FetchStatus::GitUpToDate) => git_up_to_date += 1,
             Ok(FetchStatus::GitUpdated { revision }) => git_updated.push((grammar_id, revision)),
+            Ok(FetchStatus::Vendored) => vendored += 1,
             Ok(FetchStatus::NonGit) => non_git.push(grammar_id),
             Err(e) => errors.push((grammar_id, e)),
         }
@@ -112,6 +113,10 @@ pub fn fetch_grammars() -> Result<()> {
 
     if git_up_to_date != 0 {
         println!("{} up to date git grammars", git_up_to_date);
+    }
+
+    if vendored != 0 {
+        println!("{} revision-checked vendored grammars", vendored);
     }
 
     if !non_git.is_empty() {
@@ -145,8 +150,6 @@ pub fn fetch_grammars() -> Result<()> {
 }
 
 pub fn build_grammars(target: Option<String>) -> Result<()> {
-    ensure_git_is_available()?;
-
     let grammars = get_grammar_configs()?;
     println!("Building {} grammars", grammars.len());
     let results = run_parallel(grammars, move |grammar| {
@@ -240,14 +243,25 @@ where
 enum FetchStatus {
     GitUpToDate,
     GitUpdated { revision: String },
+    Vendored,
     NonGit,
 }
 
 fn fetch_grammar(grammar: GrammarConfiguration) -> Result<FetchStatus> {
     if let GrammarSource::Git {
-        remote, revision, ..
+        remote,
+        revision,
+        vendor,
+        ..
     } = grammar.source
     {
+        if let Some(vendor) = vendor {
+            if vendored_grammar_dir(&vendor, &revision)?.is_some() {
+                return Ok(FetchStatus::Vendored);
+            }
+        }
+
+        ensure_git_is_available()?;
         let grammar_dir = crate::runtime_dirs()
             .first()
             .expect("No runtime directories provided") // guaranteed by post-condition
@@ -339,16 +353,57 @@ enum BuildStatus {
     Built,
 }
 
+fn validate_vendored_revision(grammar_dir: &Path, expected: &str) -> Result<()> {
+    let revision_file = grammar_dir.join("REVISION");
+    let observed = fs::read_to_string(&revision_file)
+        .with_context(|| format!("Failed to read vendored grammar revision {revision_file:?}"))?;
+    let observed = observed.trim();
+    if observed != expected {
+        bail!(
+            "Vendored grammar revision mismatch in {revision_file:?}: expected {expected}, observed {observed}"
+        );
+    }
+    Ok(())
+}
+
+fn vendored_grammar_dir(vendor: &str, revision: &str) -> Result<Option<PathBuf>> {
+    let mut components = Path::new(vendor).components();
+    if !matches!(components.next(), Some(std::path::Component::Normal(_)))
+        || components.next().is_some()
+    {
+        bail!("Invalid vendored grammar directory name {vendor:?}");
+    }
+
+    for runtime_dir in crate::runtime_dirs() {
+        let Some(root) = runtime_dir.parent() else {
+            continue;
+        };
+        let grammar_dir = root.join("vendor").join("grammars").join(vendor);
+        if grammar_dir.exists() {
+            validate_vendored_revision(&grammar_dir, revision)?;
+            return Ok(Some(grammar_dir));
+        }
+    }
+    Ok(None)
+}
+
 fn build_grammar(grammar: GrammarConfiguration, target: Option<&str>) -> Result<BuildStatus> {
-    let grammar_dir = if let GrammarSource::Local { path } = &grammar.source {
-        PathBuf::from(&path)
-    } else {
-        crate::runtime_dirs()
-            .first()
-            .expect("No runtime directories provided") // guaranteed by post-condition
+    let grammar_dir = match &grammar.source {
+        GrammarSource::Local { path } => PathBuf::from(path),
+        GrammarSource::Git {
+            revision,
+            vendor: Some(vendor),
+            ..
+        } => vendored_grammar_dir(vendor, revision)?.unwrap_or_else(|| {
+            crate::runtime_dirs()[0]
+                .join("grammars")
+                .join("sources")
+                .join(&grammar.grammar_id)
+        }),
+        GrammarSource::Git { .. } => crate::runtime_dirs()[0]
             .join("grammars")
             .join("sources")
-            .join(&grammar.grammar_id)
+            .join(&grammar.grammar_id),
     };
 
     let grammar_dir_entries = grammar_dir.read_dir().with_context(|| {
@@ -590,4 +645,34 @@ fn mtime(path: &Path) -> Result<SystemTime> {
 pub fn load_runtime_file(language: &str, filename: &str) -> Result<String, std::io::Error> {
     let path = crate::runtime_file(PathBuf::new().join("queries").join(language).join(filename));
     std::fs::read_to_string(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validates_vendored_revision() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("REVISION"), "abc123\n").unwrap();
+        validate_vendored_revision(dir.path(), "abc123").unwrap();
+    }
+
+    #[test]
+    fn rejects_wrong_vendored_revision() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("REVISION"), "wrong\n").unwrap();
+        let error = validate_vendored_revision(dir.path(), "expected").unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("expected expected, observed wrong"));
+    }
+
+    #[test]
+    fn rejects_nested_vendor_directory() {
+        let error = vendored_grammar_dir("../rust", "unused").unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("Invalid vendored grammar directory name"));
+    }
 }

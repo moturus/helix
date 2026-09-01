@@ -1120,23 +1120,21 @@ mod test {
         assert_pretty_print("rust", source, "(ERROR \"}\" \"{\")", 0, source.len());
 
         // Fields broken under unnamed nodes are determined correctly.
-        // In the following source, `object` belongs to the `singleton_method`
-        // rule but `name` and `body` belong to an unnamed helper `_method_rest`.
+        // The `type` field below contains the hidden Rust `_type` helper.
         // This can cause a bug with a pretty-printing implementation that
         // uses `Node::field_name_for_child` to determine field names but is
         // fixed when using `tree_sitter::TreeCursor::field_name`.
-        let source = "def self.method_name
-          true
-        end";
+        let source = "type Bytes = Vec<u8>;";
         assert_pretty_print(
-            "ruby",
+            "rust",
             source,
             concat!(
-                "(singleton_method \"def\"\n",
-                "  object: (self) \".\"\n",
-                "  name: (identifier)\n",
-                "  body: (body_statement\n",
-                "    (true)) \"end\")"
+                "(type_item \"type\"\n",
+                "  name: (type_identifier) \"=\"\n",
+                "  type: (generic_type\n",
+                "    type: (type_identifier)\n",
+                "    type_arguments: (type_arguments \"<\"\n",
+                "      (primitive_type) \">\")) \";\")",
             ),
             0,
             source.len(),

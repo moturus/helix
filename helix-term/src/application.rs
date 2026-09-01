@@ -32,13 +32,17 @@ use crate::{
 use log::{debug, error, info, warn};
 #[cfg(not(feature = "integration"))]
 use std::io::stdout;
-use std::{io::stdin, path::Path, sync::Arc};
+use std::{
+    io::{stdin, IsTerminal},
+    path::Path,
+    sync::Arc,
+};
 
 #[cfg(not(windows))]
 use anyhow::Context;
 use anyhow::Error;
 
-use crossterm::{event::Event as CrosstermEvent, tty::IsTty};
+use crossterm::event::Event as CrosstermEvent;
 #[cfg(not(windows))]
 use {signal_hook::consts::signal, signal_hook_tokio::Signals};
 #[cfg(windows)]
@@ -214,7 +218,7 @@ impl Application {
             } else {
                 editor.new_file(Action::VerticalSplit);
             }
-        } else if stdin().is_tty() || cfg!(feature = "integration") {
+        } else if stdin().is_terminal() || cfg!(feature = "integration") {
             editor.new_file(Action::VerticalSplit);
         } else {
             editor

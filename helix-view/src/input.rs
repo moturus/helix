@@ -607,6 +607,39 @@ pub fn parse_macro(keys_str: &str) -> anyhow::Result<Vec<KeyEvent>> {
 mod test {
     use super::*;
 
+    #[cfg(feature = "term")]
+    #[test]
+    fn crossterm_event_conversions_cover_terminal_inputs() {
+        use crossterm::event::{
+            Event as CrosstermEvent, KeyCode as CrosstermKeyCode, KeyEvent as CrosstermKeyEvent,
+            KeyEventKind, KeyModifiers as CrosstermKeyModifiers,
+        };
+
+        let key = |kind| {
+            CrosstermEvent::Key(CrosstermKeyEvent::new_with_kind(
+                CrosstermKeyCode::Char('c'),
+                CrosstermKeyModifiers::CONTROL,
+                kind,
+            ))
+        };
+        let expected_key = Event::Key(KeyEvent {
+            code: KeyCode::Char('c'),
+            modifiers: KeyModifiers::CONTROL,
+        });
+        assert_eq!(Event::from(key(KeyEventKind::Press)), expected_key);
+        assert_eq!(Event::from(key(KeyEventKind::Release)), expected_key);
+        assert_eq!(
+            Event::from(CrosstermEvent::Resize(80, 24)),
+            Event::Resize(80, 24)
+        );
+        assert_eq!(
+            Event::from(CrosstermEvent::Paste("pasted".into())),
+            Event::Paste("pasted".into())
+        );
+        assert_eq!(Event::from(CrosstermEvent::FocusGained), Event::FocusGained);
+        assert_eq!(Event::from(CrosstermEvent::FocusLost), Event::FocusLost);
+    }
+
     #[test]
     fn parsing_unmodified_keys() {
         assert_eq!(

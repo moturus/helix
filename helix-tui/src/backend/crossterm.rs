@@ -23,8 +23,10 @@ use std::{
     fmt,
     io::{self, Write},
 };
+#[cfg(not(target_os = "motor"))]
 use termini::TermInfo;
 
+#[cfg(not(target_os = "motor"))]
 fn term_program() -> Option<String> {
     // Some terminals don't set $TERM_PROGRAM
     match std::env::var("TERM_PROGRAM") {
@@ -32,9 +34,11 @@ fn term_program() -> Option<String> {
         Ok(term_program) => Some(term_program),
     }
 }
+#[cfg(not(target_os = "motor"))]
 fn vte_version() -> Option<usize> {
     std::env::var("VTE_VERSION").ok()?.parse().ok()
 }
+#[cfg(not(target_os = "motor"))]
 fn reset_cursor_approach(terminfo: TermInfo) -> String {
     let mut reset_str = "\x1B[0 q".to_string();
 
@@ -74,6 +78,7 @@ impl Capabilities {
     /// on the $TERM environment variable. If detection fails, returns
     /// a default value where no capability is supported, or just undercurl
     /// if config.undercurl is set.
+    #[cfg(not(target_os = "motor"))]
     pub fn from_env_or_default(config: &EditorConfig) -> Self {
         match termini::TermInfo::from_env() {
             Err(_) => Capabilities {
@@ -91,6 +96,19 @@ impl Capabilities {
                     || matches!(term_program().as_deref(), Some("WezTerm")),
                 reset_cursor_command: reset_cursor_approach(t),
             },
+        }
+    }
+
+    #[cfg(target_os = "motor")]
+    pub fn from_env_or_default(config: &EditorConfig) -> Self {
+        Self::motor_defaults(config.undercurl)
+    }
+
+    #[cfg(any(target_os = "motor", test))]
+    fn motor_defaults(undercurl: bool) -> Self {
+        Self {
+            has_extended_underlines: undercurl,
+            ..Self::default()
         }
     }
 }
@@ -138,33 +156,14 @@ where
                 supported
             })
     }
-}
 
-impl<W> Write for CrosstermBackend<W>
-where
-    W: Write,
-{
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.buffer.write(buf)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        self.buffer.flush()
-    }
-}
-
-impl<W> Backend for CrosstermBackend<W>
-where
-    W: Write,
-{
-    fn claim(&mut self, config: Config) -> io::Result<()> {
-        terminal::enable_raw_mode()?;
+    fn claim_screen(&mut self, config: Config) -> io::Result<()> {
         execute!(
             self.buffer,
             terminal::EnterAlternateScreen,
             EnableFocusChange
         )?;
-        match execute!(self.buffer, EnableBracketedPaste,) {
+        match execute!(self.buffer, EnableBracketedPaste) {
             Err(err) if err.kind() == io::ErrorKind::Unsupported => {
                 log::warn!("Bracketed paste is not supported on this terminal.");
                 self.supports_bracketed_paste = false;
@@ -189,6 +188,48 @@ where
         Ok(())
     }
 
+    fn restore_screen(&mut self, config: Config) -> io::Result<()> {
+        self.buffer
+            .write_all(self.capabilities.reset_cursor_command.as_bytes())?;
+        if config.enable_mouse_capture {
+            execute!(self.buffer, DisableMouseCapture)?;
+        }
+        if self.supports_keyboard_enhancement_protocol() {
+            execute!(self.buffer, PopKeyboardEnhancementFlags)?;
+        }
+        if self.supports_bracketed_paste {
+            execute!(self.buffer, DisableBracketedPaste)?;
+        }
+        execute!(
+            self.buffer,
+            DisableFocusChange,
+            terminal::LeaveAlternateScreen
+        )
+    }
+}
+
+impl<W> Write for CrosstermBackend<W>
+where
+    W: Write,
+{
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.buffer.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.buffer.flush()
+    }
+}
+
+impl<W> Backend for CrosstermBackend<W>
+where
+    W: Write,
+{
+    fn claim(&mut self, config: Config) -> io::Result<()> {
+        terminal::enable_raw_mode()?;
+        self.claim_screen(config)
+    }
+
     fn reconfigure(&mut self, config: Config) -> io::Result<()> {
         if self.mouse_capture_enabled != config.enable_mouse_capture {
             if config.enable_mouse_capture {
@@ -203,23 +244,7 @@ where
     }
 
     fn restore(&mut self, config: Config) -> io::Result<()> {
-        // reset cursor shape
-        self.buffer
-            .write_all(self.capabilities.reset_cursor_command.as_bytes())?;
-        if config.enable_mouse_capture {
-            execute!(self.buffer, DisableMouseCapture)?;
-        }
-        if self.supports_keyboard_enhancement_protocol() {
-            execute!(self.buffer, PopKeyboardEnhancementFlags)?;
-        }
-        if self.supports_bracketed_paste {
-            execute!(self.buffer, DisableBracketedPaste,)?;
-        }
-        execute!(
-            self.buffer,
-            DisableFocusChange,
-            terminal::LeaveAlternateScreen
-        )?;
+        self.restore_screen(config)?;
         terminal::disable_raw_mode()
     }
 
@@ -461,5 +486,75 @@ impl Command for SetUnderlineColor {
             std::io::ErrorKind::Other,
             "SetUnderlineColor not supported by winapi.",
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn backend(capabilities: Capabilities) -> CrosstermBackend<Vec<u8>> {
+        CrosstermBackend {
+            buffer: Vec::new(),
+            capabilities,
+            supports_keyboard_enhancement_protocol: OnceCell::with_value(false),
+            mouse_capture_enabled: false,
+            supports_bracketed_paste: true,
+        }
+    }
+
+    #[test]
+    fn motor_capabilities_are_conservative() {
+        let capabilities = Capabilities::motor_defaults(false);
+        assert!(!capabilities.has_extended_underlines);
+        assert_eq!(capabilities.reset_cursor_command, "\x1b[0 q");
+        assert!(Capabilities::motor_defaults(true).has_extended_underlines);
+    }
+
+    #[test]
+    fn claim_and_restore_emit_session_commands() {
+        let mut backend = backend(Capabilities::default());
+        backend
+            .claim_screen(Config {
+                enable_mouse_capture: true,
+            })
+            .unwrap();
+        let claimed = String::from_utf8(backend.buffer.clone()).unwrap();
+        assert!(claimed.contains("\x1b[?1049h"));
+        assert!(claimed.contains("\x1b[?1000h"));
+        assert!(claimed.contains("\x1b[?2004h"));
+
+        backend.buffer.clear();
+        backend
+            .restore_screen(Config {
+                enable_mouse_capture: true,
+            })
+            .unwrap();
+        let restored = String::from_utf8(backend.buffer).unwrap();
+        assert!(restored.starts_with("\x1b[0 q"));
+        assert!(restored.contains("\x1b[?1000l"));
+        assert!(restored.contains("\x1b[?2004l"));
+        assert!(restored.ends_with("\x1b[?1049l"));
+    }
+
+    #[test]
+    fn draw_preserves_colors_and_modifiers_with_underline_fallback() {
+        let mut backend = backend(Capabilities::motor_defaults(false));
+        let cell = Cell {
+            symbol: "x".into(),
+            fg: Color::Red,
+            bg: Color::Blue,
+            underline_color: Color::Green,
+            underline_style: UnderlineStyle::Curl,
+            modifier: Modifier::BOLD | Modifier::ITALIC,
+        };
+
+        backend.draw(std::iter::once((0, 0, &cell))).unwrap();
+        let output = String::from_utf8(backend.buffer).unwrap();
+        assert!(output.contains("\x1b[1m"));
+        assert!(output.contains("\x1b[3m"));
+        assert!(output.contains("\x1b[4m"));
+        assert!(output.contains('x'));
+        assert!(!output.contains("\x1b[4:3m"));
     }
 }

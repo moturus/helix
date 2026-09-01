@@ -261,18 +261,17 @@ checksum = "22ec99545bb0ed0ea7bb9b8e1e9122ea386ff8a48c0922e43f36d45ab09e0e80"
 
 [[package]]
 name = "crossterm"
-version = "0.28.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "829d955a0bb380ef178a640b91779e3987da38c9aea133b20614cfed8cdea9c6"
+version = "0.29.0"
+source = "git+https://github.com/moturus/crossterm.git?rev=94317189d1be68cd409d13380b8f4f94af9bc08c#94317189d1be68cd409d13380b8f4f94af9bc08c"
 dependencies = [
  "bitflags",
  "crossterm_winapi",
  "filedescriptor",
  "futures-core",
- "libc",
  "mio",
+ "moto-rt",
  "parking_lot",
- "rustix 0.38.44",
+ "rustix",
  "signal-hook",
  "signal-hook-mio",
  "winapi",
@@ -912,7 +911,7 @@ dependencies = [
  "itoa",
  "libc",
  "memmap2",
- "rustix 1.0.7",
+ "rustix",
  "smallvec",
  "thiserror 2.0.12",
 ]
@@ -1532,7 +1531,7 @@ dependencies = [
  "regex-automata",
  "regex-cursor",
  "ropey",
- "rustix 1.0.7",
+ "rustix",
  "tempfile",
  "unicode-segmentation",
  "which",
@@ -1639,7 +1638,7 @@ dependencies = [
  "log",
  "once_cell",
  "parking_lot",
- "rustix 1.0.7",
+ "rustix",
  "serde",
  "serde_json",
  "slotmap",
@@ -1998,12 +1997,6 @@ checksum = "6489ca9bd760fe9642d7644e827b0c9add07df89857b0416ee15c1cc1a3b8c5a"
 dependencies = [
  "zlib-rs",
 ]
-
-[[package]]
-name = "linux-raw-sys"
-version = "0.4.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "78b3ae25bc7c8c38cec158d1f2757ee79e9b3740fbc7ccf0e59e4b08d793fa89"
 
 [[package]]
 name = "linux-raw-sys"
@@ -2378,19 +2371,6 @@ checksum = "719b953e2095829ee67db738b3bfa9fa368c94900df327b3f07fe6e794d2fe1f"
 
 [[package]]
 name = "rustix"
-version = "0.38.44"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fdb5bc1ae2baa591800df16c9ca78619bf65c0488b41b96ccec5d11220d8c154"
-dependencies = [
- "bitflags",
- "errno",
- "libc",
- "linux-raw-sys 0.4.14",
- "windows-sys 0.59.0",
-]
-
-[[package]]
-name = "rustix"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c71e83d6afe7ff64890ec6b71d6a69bb8a610ab78ce364b3352876bb4c801266"
@@ -2398,7 +2378,7 @@ dependencies = [
  "bitflags",
  "errno",
  "libc",
- "linux-raw-sys 0.9.2",
+ "linux-raw-sys",
  "windows-sys 0.59.0",
 ]
 
@@ -2639,7 +2619,7 @@ dependencies = [
  "fastrand",
  "getrandom 0.3.1",
  "once_cell",
- "rustix 1.0.7",
+ "rustix",
  "windows-sys 0.59.0",
 ]
 
@@ -3028,7 +3008,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3fabb953106c3c8eea8306e4393700d7657561cb43122571b172bbfb7c7ba1d"
 dependencies = [
  "env_home",
- "rustix 1.0.7",
+ "rustix",
  "winsafe",
 ]
 

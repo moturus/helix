@@ -1,11 +1,8 @@
 use crate::config::{Config, ConfigLoadError};
-use crossterm::{
-    style::{Color, StyledContent, Stylize},
-    tty::IsTty,
-};
+use crossterm::style::{Color, StyledContent, Stylize};
 use helix_core::config::{default_lang_config, user_lang_config};
 use helix_loader::grammar::load_runtime_file;
-use std::io::Write;
+use std::io::{IsTerminal, Write};
 
 #[derive(Copy, Clone)]
 pub enum TsFeature {
@@ -162,7 +159,7 @@ pub fn languages_all() -> std::io::Result<()> {
 
     let terminal_cols = crossterm::terminal::size().map(|(c, _)| c).unwrap_or(80);
     let column_width = terminal_cols as usize / headings.len();
-    let is_terminal = std::io::stdout().is_tty();
+    let is_terminal = std::io::stdout().is_terminal();
 
     let fit = |s: &str| -> StyledContent<String> {
         format!(

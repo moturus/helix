@@ -21,7 +21,12 @@ helix-core = { path = "../helix-core" }
 bitflags.workspace = true
 cassowary = "0.3"
 unicode-segmentation.workspace = true
-crossterm = { version = "0.28", optional = true }
-termini = "1.0"
+crossterm = { version = "0.29", default-features = false, features = ["bracketed-paste", "events"], optional = true }
 once_cell = "1.21"
 log = "~0.4"
+
+[target.'cfg(not(target_os = "motor"))'.dependencies]
+termini = "1.0"
+
+[target.'cfg(windows)'.dependencies]
+crossterm = { version = "0.29", default-features = false, features = ["windows"] }

@@ -320,10 +320,15 @@ fn probe_parser(grammar_name: &str) -> std::io::Result<()> {
 
     write!(stdout, "Tree-sitter parser: ")?;
 
-    match helix_loader::grammar::get_language(grammar_name) {
-        Ok(_) => writeln!(stdout, "{}", "✓".green()),
-        Err(_) => writeln!(stdout, "{}", "None".yellow()),
+    if parser_loaded(helix_loader::grammar::get_language(grammar_name)) {
+        writeln!(stdout, "{}", "✓".green())
+    } else {
+        writeln!(stdout, "{}", "None".yellow())
     }
+}
+
+fn parser_loaded<T, E>(result: Result<Option<T>, E>) -> bool {
+    matches!(result, Ok(Some(_)))
 }
 
 /// Display diagnostics about multiple LSPs and DAPs.
@@ -402,4 +407,16 @@ pub fn print_health(health_arg: Option<String>) -> std::io::Result<()> {
         Some(lang) => language(lang.to_string())?,
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parser_loaded;
+
+    #[test]
+    fn parser_status_requires_a_loaded_grammar() {
+        assert!(parser_loaded(Ok::<_, ()>(Some(()))));
+        assert!(!parser_loaded(Ok::<Option<()>, ()>(None)));
+        assert!(!parser_loaded(Err::<Option<()>, _>(())));
+    }
 }

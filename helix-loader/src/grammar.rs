@@ -1,25 +1,29 @@
-use anyhow::{anyhow, bail, Context, Result};
+#[cfg(not(target_os = "motor"))]
+use anyhow::{anyhow, Context};
+use anyhow::{bail, Result};
+#[cfg(not(target_os = "motor"))]
 use serde::{Deserialize, Serialize};
+#[cfg(not(target_os = "motor"))]
 use std::fs;
+use std::path::PathBuf;
+#[cfg(not(target_os = "motor"))]
 use std::time::SystemTime;
-use std::{
-    collections::HashSet,
-    path::{Path, PathBuf},
-    process::Command,
-    sync::mpsc::channel,
-};
+#[cfg(not(target_os = "motor"))]
+use std::{collections::HashSet, path::Path, process::Command, sync::mpsc::channel};
+#[cfg(not(target_os = "motor"))]
 use tempfile::TempPath;
 use tree_house::tree_sitter::Grammar;
 
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "motor")))]
 const DYLIB_EXTENSION: &str = "so";
 
-#[cfg(windows)]
+#[cfg(all(windows, not(target_os = "motor")))]
 const DYLIB_EXTENSION: &str = "dll";
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", not(target_os = "motor")))]
 const DYLIB_EXTENSION: &str = "wasm";
 
+#[cfg(not(target_os = "motor"))]
 #[derive(Debug, Serialize, Deserialize)]
 struct Configuration {
     #[serde(rename = "use-grammars")]
@@ -27,6 +31,7 @@ struct Configuration {
     pub grammar: Vec<GrammarConfiguration>,
 }
 
+#[cfg(not(target_os = "motor"))]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase", untagged)]
 pub enum GrammarSelection {
@@ -34,6 +39,7 @@ pub enum GrammarSelection {
     Except { except: HashSet<String> },
 }
 
+#[cfg(not(target_os = "motor"))]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GrammarConfiguration {
@@ -42,6 +48,7 @@ pub struct GrammarConfiguration {
     pub source: GrammarSource,
 }
 
+#[cfg(not(target_os = "motor"))]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase", untagged)]
 pub enum GrammarSource {
@@ -58,15 +65,17 @@ pub enum GrammarSource {
     },
 }
 
+#[cfg(not(target_os = "motor"))]
 const BUILD_TARGET: &str = env!("BUILD_TARGET");
+#[cfg(not(target_os = "motor"))]
 const REMOTE_NAME: &str = "origin";
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", not(target_os = "motor")))]
 pub fn get_language(name: &str) -> Result<Option<Grammar>> {
     unimplemented!()
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), not(target_os = "motor")))]
 pub fn get_language(name: &str) -> Result<Option<Grammar>> {
     let mut rel_library_path = PathBuf::new().join("grammars").join(name);
     rel_library_path.set_extension(DYLIB_EXTENSION);
@@ -79,11 +88,23 @@ pub fn get_language(name: &str) -> Result<Option<Grammar>> {
     Ok(Some(grammar))
 }
 
+#[cfg(target_os = "motor")]
+pub fn get_language(_name: &str) -> Result<Option<Grammar>> {
+    Ok(None)
+}
+
+#[cfg(not(target_os = "motor"))]
 fn ensure_git_is_available() -> Result<()> {
     helix_stdx::env::which("git")?;
     Ok(())
 }
 
+#[cfg(target_os = "motor")]
+pub fn fetch_grammars() -> Result<()> {
+    bail!("fetching tree-sitter grammars is unsupported on Motor OS")
+}
+
+#[cfg(not(target_os = "motor"))]
 pub fn fetch_grammars() -> Result<()> {
     // We do not need to fetch local grammars.
     let mut grammars = get_grammar_configs()?;
@@ -149,6 +170,12 @@ pub fn fetch_grammars() -> Result<()> {
     Ok(())
 }
 
+#[cfg(target_os = "motor")]
+pub fn build_grammars(_target: Option<String>) -> Result<()> {
+    bail!("building shared tree-sitter grammars is unsupported on Motor OS")
+}
+
+#[cfg(not(target_os = "motor"))]
 pub fn build_grammars(target: Option<String>) -> Result<()> {
     let grammars = get_grammar_configs()?;
     println!("Building {} grammars", grammars.len());
@@ -194,6 +221,7 @@ pub fn build_grammars(target: Option<String>) -> Result<()> {
 // Grammars are configured in the default and user `languages.toml` and are
 // merged. The `grammar_selection` key of the config is then used to filter
 // down all grammars into a subset of the user's choosing.
+#[cfg(not(target_os = "motor"))]
 fn get_grammar_configs() -> Result<Vec<GrammarConfiguration>> {
     let config: Configuration = crate::config::user_lang_config()
         .context("Could not parse languages.toml")?
@@ -216,6 +244,7 @@ fn get_grammar_configs() -> Result<Vec<GrammarConfiguration>> {
     Ok(grammars)
 }
 
+#[cfg(not(target_os = "motor"))]
 fn run_parallel<F, Res>(grammars: Vec<GrammarConfiguration>, job: F) -> Vec<(String, Result<Res>)>
 where
     F: Fn(GrammarConfiguration) -> Result<Res> + Send + 'static + Clone,
@@ -240,6 +269,7 @@ where
     rx.iter().collect()
 }
 
+#[cfg(not(target_os = "motor"))]
 enum FetchStatus {
     GitUpToDate,
     GitUpdated { revision: String },
@@ -247,6 +277,7 @@ enum FetchStatus {
     NonGit,
 }
 
+#[cfg(not(target_os = "motor"))]
 fn fetch_grammar(grammar: GrammarConfiguration) -> Result<FetchStatus> {
     if let GrammarSource::Git {
         remote,
@@ -306,6 +337,7 @@ fn fetch_grammar(grammar: GrammarConfiguration) -> Result<FetchStatus> {
 
 // Sets the remote for a repository to the given URL, creating the remote if
 // it does not yet exist.
+#[cfg(not(target_os = "motor"))]
 fn set_remote(repository_dir: &Path, remote_url: &str) -> Result<String> {
     git(
         repository_dir,
@@ -314,16 +346,19 @@ fn set_remote(repository_dir: &Path, remote_url: &str) -> Result<String> {
     .or_else(|_| git(repository_dir, ["remote", "add", REMOTE_NAME, remote_url]))
 }
 
+#[cfg(not(target_os = "motor"))]
 fn get_remote_url(repository_dir: &Path) -> Option<String> {
     git(repository_dir, ["remote", "get-url", REMOTE_NAME]).ok()
 }
 
+#[cfg(not(target_os = "motor"))]
 fn get_revision(repository_dir: &Path) -> Option<String> {
     git(repository_dir, ["rev-parse", "HEAD"]).ok()
 }
 
 // A wrapper around 'git' commands which returns stdout in success and a
 // helpful error message showing the command, stdout, and stderr in error.
+#[cfg(not(target_os = "motor"))]
 fn git<I, S>(repository_dir: &Path, args: I) -> Result<String>
 where
     I: IntoIterator<Item = S>,
@@ -348,11 +383,13 @@ where
     }
 }
 
+#[cfg(not(target_os = "motor"))]
 enum BuildStatus {
     AlreadyBuilt,
     Built,
 }
 
+#[cfg(not(target_os = "motor"))]
 fn validate_vendored_revision(grammar_dir: &Path, expected: &str) -> Result<()> {
     let revision_file = grammar_dir.join("REVISION");
     let observed = fs::read_to_string(&revision_file)
@@ -366,6 +403,7 @@ fn validate_vendored_revision(grammar_dir: &Path, expected: &str) -> Result<()> 
     Ok(())
 }
 
+#[cfg(not(target_os = "motor"))]
 fn vendored_grammar_dir(vendor: &str, revision: &str) -> Result<Option<PathBuf>> {
     let mut components = Path::new(vendor).components();
     if !matches!(components.next(), Some(std::path::Component::Normal(_)))
@@ -387,6 +425,7 @@ fn vendored_grammar_dir(vendor: &str, revision: &str) -> Result<Option<PathBuf>>
     Ok(None)
 }
 
+#[cfg(not(target_os = "motor"))]
 fn build_grammar(grammar: GrammarConfiguration, target: Option<&str>) -> Result<BuildStatus> {
     let grammar_dir = match &grammar.source {
         GrammarSource::Local { path } => PathBuf::from(path),
@@ -432,6 +471,7 @@ fn build_grammar(grammar: GrammarConfiguration, target: Option<&str>) -> Result<
     build_tree_sitter_library(&path, grammar, target)
 }
 
+#[cfg(not(target_os = "motor"))]
 fn build_tree_sitter_library(
     src_path: &Path,
     grammar: GrammarConfiguration,
@@ -616,6 +656,7 @@ fn build_tree_sitter_library(
     Ok(BuildStatus::Built)
 }
 
+#[cfg(not(target_os = "motor"))]
 fn needs_recompile(
     lib_path: &Path,
     parser_c_path: &Path,
@@ -636,6 +677,7 @@ fn needs_recompile(
     Ok(false)
 }
 
+#[cfg(not(target_os = "motor"))]
 fn mtime(path: &Path) -> Result<SystemTime> {
     Ok(fs::metadata(path)?.modified()?)
 }
@@ -647,7 +689,7 @@ pub fn load_runtime_file(language: &str, filename: &str) -> Result<String, std::
     std::fs::read_to_string(path)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_os = "motor")))]
 mod tests {
     use super::*;
 

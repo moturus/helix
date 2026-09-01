@@ -7,6 +7,8 @@ const MINOR: &str = env!("CARGO_PKG_VERSION_MINOR");
 const PATCH: &str = env!("CARGO_PKG_VERSION_PATCH");
 
 fn main() {
+    println!("cargo:rustc-check-cfg=cfg(target_os, values(\"motor\"))");
+
     let git_hash = Command::new("git")
         .args(["rev-parse", "HEAD"])
         .output()

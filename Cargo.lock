@@ -2837,6 +2837,7 @@ dependencies = [
 [[package]]
 name = "tree-house-bindings"
 version = "0.2.4"
+source = "git+https://github.com/moturus/tree-house.git?rev=06744f59815246da0d9a77fbca3d071cfe447be1#06744f59815246da0d9a77fbca3d071cfe447be1"
 dependencies = [
  "cc",
  "libloading",

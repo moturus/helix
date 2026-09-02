@@ -48,7 +48,7 @@ mod feature_free_tests {
 
     #[test]
     fn registry_is_inert_without_the_feature() {
-        assert_eq!(NAMES.len(), 10);
+        assert_eq!(NAMES.len(), 11);
         assert!(get("rust").is_none());
     }
 }
@@ -64,6 +64,7 @@ mod tests {
         ("toml", "name = \"motor\"\n"),
         ("markdown", "# Heading\n\nText.\n"),
         ("markdown_inline", "**bold** text\n"),
+        ("html", "<!doctype html><strong>Motor</strong>\n"),
         ("c", "int main(void) { return 0; }\n"),
         ("cpp", "int main() { return 0; }\n"),
         ("json", "{\"ready\": true}\n"),

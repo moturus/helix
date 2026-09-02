@@ -10,6 +10,7 @@ bindings, tests, documentation, and build artifacts are intentionally absent.
 | `rust` | `tree-sitter/tree-sitter-rust` | `77a3747266f4d621d0757825e6b11edcbf991ca5` |
 | `toml` | `ikatyang/tree-sitter-toml` | `7cff70bbcbbc62001b465603ca1ea88edd668704` |
 | `markdown` | `tree-sitter-grammars/tree-sitter-markdown` | `62516e8c78380e3b51d5b55727995d2c511436d8` |
+| `html` | `tree-sitter/tree-sitter-html` | `cbb91a0ff3621245e890d1c50cc811bffb77a26b` |
 | `c` | `tree-sitter/tree-sitter-c` | `7175a6dd5fc1cee660dce6fe23f6043d75af424a` |
 | `cpp` | `tree-sitter/tree-sitter-cpp` | `56455f4245baf4ea4e0881c5169de69d7edd5ae7` |
 | `json` | `tree-sitter/tree-sitter-json` | `73076754005a460947cafe8e03a8cf5fa4fa2938` |

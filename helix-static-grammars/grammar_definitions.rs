@@ -5,6 +5,7 @@ macro_rules! grammar_definitions {
             ("toml", tree_sitter_toml, "7cff70bbcbbc62001b465603ca1ea88edd668704", "toml", "", C),
             ("markdown", tree_sitter_markdown, "62516e8c78380e3b51d5b55727995d2c511436d8", "markdown", "tree-sitter-markdown", C),
             ("markdown_inline", tree_sitter_markdown_inline, "62516e8c78380e3b51d5b55727995d2c511436d8", "markdown", "tree-sitter-markdown-inline", C),
+            ("html", tree_sitter_html, "cbb91a0ff3621245e890d1c50cc811bffb77a26b", "html", "", C),
             ("c", tree_sitter_c, "7175a6dd5fc1cee660dce6fe23f6043d75af424a", "c", "", None),
             ("cpp", tree_sitter_cpp, "56455f4245baf4ea4e0881c5169de69d7edd5ae7", "cpp", "", C),
             ("json", tree_sitter_json, "73076754005a460947cafe8e03a8cf5fa4fa2938", "json", "", None),
